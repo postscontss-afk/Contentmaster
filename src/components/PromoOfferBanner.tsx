@@ -25,6 +25,33 @@ const PromoOfferBanner = ({ telegramLink, telegramUsername, prefilledMessage }: 
   const [isStripeLoading, setIsStripeLoading] = useState(false);
   const { stripePublishableKey } = useSiteConfig();
 
+  // Add CSS animation for banner pulse effect
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes promoPulse {
+        0%, 100% {
+          box-shadow: 0 8px 32px rgba(25, 118, 210, 0.3), 0 0 0 1px rgba(25, 118, 210, 0.1);
+        }
+        50% {
+          box-shadow: 0 12px 48px rgba(25, 118, 210, 0.5), 0 0 0 1px rgba(25, 118, 210, 0.2);
+        }
+      }
+      @keyframes promoPulseLight {
+        0%, 100% {
+          box-shadow: 0 8px 32px rgba(25, 118, 210, 0.2), 0 0 0 1px rgba(25, 118, 210, 0.1);
+        }
+        50% {
+          box-shadow: 0 12px 48px rgba(25, 118, 210, 0.35), 0 0 0 1px rgba(25, 118, 210, 0.2);
+        }
+      }
+    `;
+    document.head.appendChild(style);
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
+
   const interestMessage = prefilledMessage || "Hi! I'm interested in the $100 offer including all content. Could you guide me on how to pay?";
   const computedTelegramHref = (() => {
     try {
@@ -97,11 +124,16 @@ const PromoOfferBanner = ({ telegramLink, telegramUsername, prefilledMessage }: 
           borderRadius: 3,
           p: { xs: 3, sm: 4 },
           color: theme => theme.palette.text.primary,
-          backgroundColor: theme => theme.palette.background.paper,
-          border: theme => `1px solid ${theme.palette.divider}`,
+          background: theme => theme.palette.mode === 'dark'
+            ? 'linear-gradient(135deg, rgba(25, 118, 210, 0.15) 0%, rgba(156, 39, 176, 0.15) 100%)'
+            : 'linear-gradient(135deg, rgba(25, 118, 210, 0.08) 0%, rgba(156, 39, 176, 0.08) 100%)',
+          border: theme => `2px solid ${theme.palette.mode === 'dark' ? 'rgba(25, 118, 210, 0.5)' : 'rgba(25, 118, 210, 0.3)'}`,
           boxShadow: theme => theme.palette.mode === 'dark' 
-            ? '0 6px 20px rgba(0,0,0,0.4)'
-            : '0 6px 18px rgba(0,0,0,0.06)'
+            ? '0 8px 32px rgba(25, 118, 210, 0.3), 0 0 0 1px rgba(25, 118, 210, 0.1)'
+            : '0 8px 32px rgba(25, 118, 210, 0.2), 0 0 0 1px rgba(25, 118, 210, 0.1)',
+          animation: theme => theme.palette.mode === 'dark' 
+            ? 'promoPulse 3s ease-in-out infinite'
+            : 'promoPulseLight 3s ease-in-out infinite'
         }}
       >
         <Grid container spacing={3} alignItems="center">
@@ -109,21 +141,31 @@ const PromoOfferBanner = ({ telegramLink, telegramUsername, prefilledMessage }: 
             <Typography
               variant="h4"
               sx={{
-                fontWeight: 800,
+                fontWeight: 900,
                 mb: 1,
-                fontSize: { xs: '1.5rem', sm: '1.9rem', md: '2.1rem' }
+                fontSize: { xs: '1.75rem', sm: '2.2rem', md: '2.5rem' },
+                background: theme => theme.palette.mode === 'dark'
+                  ? 'linear-gradient(135deg, #1976d2 0%, #9c27b0 100%)'
+                  : 'linear-gradient(135deg, #1565c0 0%, #7b1fa2 100%)',
+                backgroundClip: 'text',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                textAlign: { xs: 'center', md: 'left' }
               }}
             >
-              Special Offer
+              🎉 Special Offer 🎉
             </Typography>
 
             <Typography
               variant="h6"
               sx={{
-                fontWeight: 700,
+                fontWeight: 800,
                 mb: 2,
-                fontSize: { xs: '1rem', sm: '1.15rem', md: '1.25rem' },
-                color: theme => theme.palette.text.secondary
+                fontSize: { xs: '1.25rem', sm: '1.5rem', md: '1.75rem' },
+                color: theme => theme.palette.mode === 'dark' 
+                  ? 'rgba(255, 193, 7, 0.9)'
+                  : '#f57c00',
+                textAlign: { xs: 'center', md: 'left' }
               }}
             >
               All content for only $100

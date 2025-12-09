@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { FC } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import Container from '@mui/material/Container';
@@ -131,6 +131,7 @@ const Home: FC = () => {
   
   const [loadedVideos, setLoadedVideos] = useState<Video[]>([]);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const loadedVideoIdsRef = useRef<Set<string>>(new Set());
   const [sectionOnlineNow, setSectionOnlineNow] = useState<number>(() => Math.floor(Math.random() * 101));
   const [sectionHappyCustomers] = useState<number>(() => Math.floor(Math.random() * (1300 - 700 + 1)) + 700);
   const [sectionRating] = useState<number>(() => parseFloat((Math.random() * 0.6 + 4.2).toFixed(1)));
@@ -138,7 +139,7 @@ const Home: FC = () => {
   const { user } = useAuth();
   const { videoListTitle, telegramUsername } = useSiteConfig();
   const navigate = useNavigate();
-  const videosPerPage = 24; // Aumentar de 12 para 24 vídeos por página
+  const videosPerPage = 12; // Videos per page
 
   // Check for Stripe payment success on component mount
   useEffect(() => {
@@ -184,16 +185,19 @@ Please let me know if you need any assistance accessing your content.`;
         setError(null);
         setLoadedVideos([]); // Reset loaded videos
         setVideos([]); // Reset videos array
+        loadedVideoIdsRef.current = new Set(); // Reset loaded IDs tracking
         
         // Get video IDs first (ultra-fast operation - no metadata loading)
         const allVideoIds = await VideoService.getVideoIds(SortOption.NEWEST);
-        const totalPages = Math.ceil(allVideoIds.length / videosPerPage);
+        // Remove duplicates from video IDs
+        const uniqueVideoIds = Array.from(new Set(allVideoIds));
+        const totalPages = Math.ceil(uniqueVideoIds.length / videosPerPage);
         setTotalPages(totalPages);
         
         // Get video IDs for current page
         const startIndex = (page - 1) * videosPerPage;
         const endIndex = startIndex + videosPerPage;
-        const pageVideoIds = allVideoIds.slice(startIndex, endIndex);
+        const pageVideoIds = uniqueVideoIds.slice(startIndex, endIndex);
         
         // Set loading to false immediately so skeletons show
         setLoading(false);
@@ -229,15 +233,32 @@ Please let me know if you need any assistance accessing your content.`;
   const loadVideosOneByOne = async (videoIds: string[]) => {
     setIsLoadingMore(true);
     
+    // Track loaded IDs to prevent duplicates within this batch
+    const loadedIds = new Set<string>();
+    
     for (let i = 0; i < videoIds.length; i++) {
       const videoId = videoIds[i];
+      
+      // Skip if already loaded in this batch
+      if (loadedIds.has(videoId)) {
+        continue;
+      }
       
       try {
         // Load individual video
         const video = await VideoService.getVideo(videoId);
         
         if (video) {
-          // Add video immediately to both arrays
+          // Skip if already loaded (check both batch Set and ref)
+          if (loadedIds.has(video.$id) || loadedVideoIdsRef.current.has(video.$id)) {
+            continue;
+          }
+          
+          // Mark as loaded in this batch and ref
+          loadedIds.add(video.$id);
+          loadedVideoIdsRef.current.add(video.$id);
+          
+          // Add video to both arrays (only once)
           setLoadedVideos(prev => [...prev, video]);
           setVideos(prev => [...prev, video]);
         }
@@ -322,9 +343,6 @@ Please let me know if you need any assistance accessing your content.`;
         `}
       </style>
       
-      {/* Promoção especial */}
-      <PromoOfferBanner telegramUsername={telegramUsername} />
-
       {/* Banner de destaque */}
       <FeaturedBanner onError={handleBannerError} />
       
@@ -567,6 +585,11 @@ Please let me know if you need any assistance accessing your content.`;
       </Container>
       
       <ContactSection />
+      
+      {/* Promoção especial - Movido para o fundo da página para atrair mais atenção */}
+      <Box sx={{ mt: 6, mb: 4 }}>
+        <PromoOfferBanner telegramUsername={telegramUsername} />
+      </Box>
       
       {/* Modal de setup da base de dados */}
       <DatabaseSetupModal 

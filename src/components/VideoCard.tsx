@@ -530,13 +530,21 @@ I'm sending the payment from my wallet. Please confirm the transaction and provi
         />
       </Box>
       
-      <CardContent sx={{ flexGrow: 1, p: 2, pt: 1.5 }}>
+      <CardContent sx={{ 
+        flexGrow: 1, 
+        p: { xs: 1.5, sm: 2 }, 
+        pt: { xs: 1.5, sm: 1.5 },
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
+        overflow: 'hidden'
+      }}>
         <Typography gutterBottom variant="h6" component="div" sx={{
           fontWeight: 'bold',
-          fontSize: '1rem',
+          fontSize: { xs: '0.9rem', sm: '1rem' },
           lineHeight: 1.2,
           mb: 1,
-          height: '2.4rem',
+          minHeight: { xs: '2.2rem', sm: '2.4rem' },
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           display: '-webkit-box',
@@ -547,35 +555,69 @@ I'm sending the payment from my wallet. Please confirm the transaction and provi
           {video.title}
         </Typography>
         
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: theme => theme.palette.text.secondary }}>
-            <VisibilityIcon sx={{ fontSize: 16 }} />
-            <Typography variant="caption">
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          mb: 1,
+          flexShrink: 0
+        }}>
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 0.5, 
+            color: theme => theme.palette.text.secondary 
+          }}>
+            <VisibilityIcon sx={{ fontSize: { xs: 14, sm: 16 } }} />
+            <Typography variant="caption" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
               {formatViews(video.views)}
             </Typography>
           </Box>
           
           {createdAtField && (
-            <Typography variant="caption" sx={{ color: theme => theme.palette.text.secondary }}>
+            <Typography 
+              variant="caption" 
+              sx={{ 
+                color: theme => theme.palette.text.secondary,
+                fontSize: { xs: '0.7rem', sm: '0.75rem' }
+              }}
+            >
               {formatDate(createdAtField)}
             </Typography>
           )}
         </Box>
 
         {/* Actions: Preview and Telegram */}
-        <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: { xs: 'column', sm: 'row' },
+          gap: { xs: 0.75, sm: 1 }, 
+          mt: 1 
+        }}>
           <Button
             variant="contained"
             color="primary"
             fullWidth
-            startIcon={<VisibilityIcon />}
+            startIcon={<VisibilityIcon sx={{ fontSize: { xs: '16px', sm: '18px' } }} />}
             onClick={handlePreviewClick}
+            sx={{
+              minWidth: { xs: '100%', sm: '80px' },
+              fontSize: { xs: '0.7rem', sm: '0.8rem' },
+              py: { xs: 0.6, sm: 0.75 },
+              px: { xs: 0.75, sm: 1.25 },
+              whiteSpace: 'nowrap',
+              textTransform: 'none',
+              fontWeight: 500,
+              '& .MuiButton-startIcon': {
+                marginRight: { xs: 0.5, sm: 0.75 }
+              }
+            }}
           >
-            Preview
+            Play
           </Button>
           {/* Show link button only if is_free and has product_link */}
           {video.is_free && video.product_link && (
-              <Button
+            <Button
               variant="outlined"
               color="primary"
               fullWidth
@@ -583,9 +625,17 @@ I'm sending the payment from my wallet. Please confirm the transaction and provi
                 e.stopPropagation();
                 window.open(video.product_link, '_blank');
               }}
-              sx={{ fontWeight: 'bold' }}
+              sx={{ 
+                fontWeight: 'bold',
+                minWidth: { xs: '100%', sm: '80px' },
+                fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                py: { xs: 0.75, sm: 1 },
+                px: { xs: 1, sm: 1.5 },
+                whiteSpace: 'nowrap',
+                textTransform: 'none'
+              }}
             >
-              View Product Link
+              View Link
             </Button>
           )}
           {/* Payment buttons only if not free */}
@@ -595,10 +645,23 @@ I'm sending the payment from my wallet. Please confirm the transaction and provi
                 variant="outlined"
                 color="primary"
                 fullWidth
-                startIcon={<TelegramIcon />}
+                startIcon={<TelegramIcon sx={{ fontSize: { xs: '16px', sm: '18px' } }} />}
                 href={telegramHref}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                sx={{
+                  minWidth: { xs: '100%', sm: '80px' },
+                  fontSize: { xs: '0.7rem', sm: '0.8rem' },
+                  py: { xs: 0.6, sm: 0.75 },
+                  px: { xs: 0.75, sm: 1.25 },
+                  whiteSpace: 'nowrap',
+                  textTransform: 'none',
+                  fontWeight: 500,
+                  '& .MuiButton-startIcon': {
+                    marginRight: { xs: 0.5, sm: 0.75 }
+                  }
+                }}
               >
                 Telegram
               </Button>
@@ -606,11 +669,26 @@ I'm sending the payment from my wallet. Please confirm the transaction and provi
                 variant="contained"
                 color="primary"
                 fullWidth
-                startIcon={<CreditCardIcon />}
+                startIcon={<CreditCardIcon sx={{ fontSize: { xs: '16px', sm: '18px' } }} />}
                 onClick={handleStripePay}
                 disabled={isStripeLoading}
+                sx={{
+                  minWidth: { xs: '100%', sm: '80px' },
+                  fontSize: { xs: '0.7rem', sm: '0.8rem' },
+                  py: { xs: 0.6, sm: 0.75 },
+                  px: { xs: 0.75, sm: 1.25 },
+                  whiteSpace: 'nowrap',
+                  textTransform: 'none',
+                  fontWeight: 500,
+                  '& .MuiButton-startIcon': {
+                    marginRight: { xs: 0.5, sm: 0.75 }
+                  },
+                  '&:disabled': {
+                    opacity: 0.6
+                  }
+                }}
               >
-                Pay instatly
+                Pay Instantly
               </Button>
             </>
           )}

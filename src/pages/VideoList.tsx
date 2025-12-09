@@ -64,10 +64,76 @@ const VideoCardSkeleton: FC = () => {
   );
 };
 
+// Loading card component with progress indicator
+const VideoCardLoading: FC<{ index: number }> = ({ index }) => {
+  return (
+    <Card sx={{ 
+      height: '100%', 
+      display: 'flex', 
+      flexDirection: 'column',
+      borderRadius: '8px',
+      overflow: 'hidden',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+      bgcolor: 'background.paper',
+      position: 'relative'
+    }}>
+      {/* Thumbnail area with progress indicator */}
+      <Box sx={{ 
+        width: '100%', 
+        paddingTop: '56.25%', 
+        position: 'relative',
+        bgcolor: 'rgba(0,0,0,0.05)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          alignItems: 'center',
+          gap: 2
+        }}>
+          <CircularProgress 
+            size={40} 
+            thickness={4}
+            sx={{ 
+              color: 'primary.main',
+              animation: 'pulse 1.5s ease-in-out infinite'
+            }} 
+          />
+          <Typography 
+            variant="caption" 
+            sx={{ 
+              color: 'text.secondary',
+              fontWeight: 'bold',
+              textAlign: 'center'
+            }}
+          >
+            Loading video {index + 1}...
+          </Typography>
+        </Box>
+      </Box>
+      
+      <CardContent>
+        <Skeleton variant="text" sx={{ fontSize: '1.5rem', mb: 1 }} />
+        <Skeleton variant="text" sx={{ fontSize: '1rem', width: '60%' }} />
+        <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between' }}>
+          <Skeleton variant="text" sx={{ width: '30%' }} />
+          <Skeleton variant="text" sx={{ width: '20%' }} />
+        </Box>
+      </CardContent>
+    </Card>
+  );
+};
+
 const VideoList: FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [videos, setVideos] = useState<Video[]>([]);
+  const [loadedVideos, setLoadedVideos] = useState<Video[]>([]);
+  const [allVideoIds, setAllVideoIds] = useState<string[]>([]);
+  const [displayedCount, setDisplayedCount] = useState(12); // Initial videos to show
   const [loading, setLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sortOption, setSortOption] = useState<SortOption>(SortOption.NEWEST);
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
@@ -79,6 +145,7 @@ const VideoList: FC = () => {
   
   const { user } = useAuth();
   const { siteConfig } = useSiteConfig();
+  const videosPerPage = 12; // Videos to load per "Load More" click
 
   // Check if user has seen the adult content warning
   useEffect(() => {
@@ -96,25 +163,39 @@ const VideoList: FC = () => {
     }
   }, [searchParams]);
 
-  useEffect(() => {
-    const fetchVideos = async () => {
+  // Function to load videos one by one (progressive loading)
+  const loadVideosOneByOne = async (videoIds: string[]) => {
+    setIsLoadingMore(true);
+    
+    // Track loaded IDs to prevent duplicates within this batch
+    const loadedIds = new Set<string>();
+    
+    for (let i = 0; i < videoIds.length; i++) {
+      const videoId = videoIds[i];
+      
+      // Skip if already loaded in this batch
+      if (loadedIds.has(videoId)) {
+        continue;
+      }
+      
       try {
-        setLoading(true);
-        setError(null);
+        // Load individual video
+        const video = await VideoService.getVideo(videoId);
         
-        // Get all videos at once without pagination
-        const allVideos = await VideoService.getAllVideos(sortOption, debouncedSearchQuery);
-        
-        console.log('Received videos:', allVideos);
-        
-        // Apply client-side filtering for price range
-        let filteredVideos = allVideos.filter(video => 
-          video.price >= priceRange[0] && video.price <= priceRange[1]
-        );
-        
-        // Apply duration filter if selected
-        if (durationFilter) {
-          filteredVideos = filteredVideos.filter(video => {
+        if (video) {
+          // Mark as loaded in this batch
+          loadedIds.add(video.$id);
+          
+          // Apply filters before adding
+          let shouldInclude = true;
+          
+          // Price range filter
+          if (video.price < priceRange[0] || video.price > priceRange[1]) {
+            shouldInclude = false;
+          }
+          
+          // Duration filter
+          if (shouldInclude && durationFilter) {
             const duration = video.duration || '00:00';
             const parts = duration.split(':').map(Number);
             const seconds = parts.length === 2 
@@ -123,29 +204,94 @@ const VideoList: FC = () => {
               
             switch(durationFilter) {
               case 'short': // Less than 5 minutes
-                return seconds < 300;
+                shouldInclude = seconds < 300;
+                break;
               case 'medium': // 5-15 minutes
-                return seconds >= 300 && seconds <= 900;
+                shouldInclude = seconds >= 300 && seconds <= 900;
+                break;
               case 'long': // More than 15 minutes
-                return seconds > 900;
-              default:
-                return true;
+                shouldInclude = seconds > 900;
+                break;
             }
-          });
+          }
+          
+          if (shouldInclude) {
+            // Check if video already exists to avoid duplicates
+            setLoadedVideos(prev => {
+              const exists = prev.some(v => v.$id === video.$id);
+              if (exists) return prev;
+              return [...prev, video];
+            });
+            setVideos(prev => {
+              const exists = prev.some(v => v.$id === video.$id);
+              if (exists) return prev;
+              return [...prev, video];
+            });
+          }
         }
         
-        // Set all filtered videos to state
-        setVideos(filteredVideos);
+        // Add a small delay between videos (except for the first one)
+        if (i > 0) {
+          await new Promise(resolve => setTimeout(resolve, 150));
+        }
+      } catch (error) {
+        console.error(`Error loading video ${videoId}:`, error);
+        // Continue with next video even if current one fails
+      }
+    }
+    
+    setIsLoadingMore(false);
+  };
+
+  // Get video IDs first (ultra-fast operation - no metadata loading)
+  useEffect(() => {
+    const fetchVideoIds = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        setLoadedVideos([]);
+        setVideos([]);
+        setDisplayedCount(videosPerPage);
+        
+        // Get all video IDs first (fast)
+        const videoIds = await VideoService.getVideoIds(sortOption);
+        // Remove duplicates from video IDs
+        const uniqueVideoIds = Array.from(new Set(videoIds));
+        setAllVideoIds(uniqueVideoIds);
+        
+        // Set loading to false immediately so skeletons show
+        setLoading(false);
+        
+        // Load initial batch of videos one by one
+        const initialVideoIds = uniqueVideoIds.slice(0, videosPerPage);
+        await loadVideosOneByOne(initialVideoIds);
       } catch (err) {
-        console.error('Error fetching videos:', err);
+        console.error('Error fetching video IDs:', err);
         setError('Failed to load videos. Please try again later.');
-      } finally {
         setLoading(false);
       }
     };
     
-    fetchVideos();
-  }, [user, sortOption, debouncedSearchQuery, priceRange, durationFilter]);
+    fetchVideoIds();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, sortOption]);
+
+  // When search query changes, we don't need to reload - filtering is done client-side
+  // The filteredVideos already handles this
+
+  // Re-filter videos when filters change
+  useEffect(() => {
+    if (allVideoIds.length === 0) return;
+    
+    // Reset and reload with new filters
+    setLoadedVideos([]);
+    setVideos([]);
+    setDisplayedCount(videosPerPage);
+    
+    const initialVideoIds = allVideoIds.slice(0, videosPerPage);
+    loadVideosOneByOne(initialVideoIds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [priceRange, durationFilter]);
 
   // Verificação periódica para limpar cache se necessário
   useEffect(() => {
@@ -156,9 +302,16 @@ const VideoList: FC = () => {
         if (response.ok) {
           console.log('Cache clear signal received, refreshing videos...');
           VideoService.clearCachePublic();
-          // Recarregar vídeos
-          const allVideos = await VideoService.getAllVideos(sortOption, debouncedSearchQuery);
-          setVideos(allVideos);
+          // Recarregar IDs de vídeos
+          const videoIds = await VideoService.getVideoIds(sortOption);
+          // Remove duplicates from video IDs
+          const uniqueVideoIds = Array.from(new Set(videoIds));
+          setAllVideoIds(uniqueVideoIds);
+          setLoadedVideos([]);
+          setVideos([]);
+          setDisplayedCount(videosPerPage);
+          const initialVideoIds = uniqueVideoIds.slice(0, videosPerPage);
+          await loadVideosOneByOne(initialVideoIds);
         }
       } catch (error) {
         // Ignorar erros de rede
@@ -170,7 +323,8 @@ const VideoList: FC = () => {
     const interval = setInterval(checkForUpdates, 10000);
     
     return () => clearInterval(interval);
-  }, [sortOption, debouncedSearchQuery]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortOption]);
 
   const handleSortChange = (event: SelectChangeEvent) => {
     setSortOption(event.target.value as SortOption);
@@ -207,6 +361,41 @@ const VideoList: FC = () => {
       </Grid>
     ));
   };
+
+  // Render loading cards with progress indicators
+  const renderLoadingCards = () => {
+    const totalExpectedVideos = videosPerPage;
+    const loadedCount = loadedVideos.length;
+    const loadingCount = Math.max(0, totalExpectedVideos - loadedCount);
+    
+    return Array(loadingCount).fill(0).map((_, index) => (
+      <Grid item key={`loading-${index}`} xs={12} sm={6} md={4} lg={3}>
+        <VideoCardLoading index={loadedCount + index} />
+      </Grid>
+    ));
+  };
+
+  // Handle "Load More" button click
+  const handleLoadMore = async () => {
+    if (isLoadingMore || displayedCount >= allVideoIds.length) return;
+    
+    const nextBatchStart = displayedCount;
+    const nextBatchEnd = Math.min(displayedCount + videosPerPage, allVideoIds.length);
+    const nextBatchIds = allVideoIds.slice(nextBatchStart, nextBatchEnd);
+    
+    setDisplayedCount(nextBatchEnd);
+    await loadVideosOneByOne(nextBatchIds);
+  };
+
+  // Filter videos based on search query (client-side)
+  const filteredVideos = loadedVideos.filter(video => {
+    if (!debouncedSearchQuery) return true;
+    const searchLower = debouncedSearchQuery.toLowerCase();
+    return (
+      video.title?.toLowerCase().includes(searchLower) ||
+      video.description?.toLowerCase().includes(searchLower)
+    );
+  });
 
   return (
     <>
@@ -280,42 +469,59 @@ const VideoList: FC = () => {
           <Typography variant="h4" component="h1" gutterBottom>
             {siteConfig?.video_list_title || 'Available Videos'}
           </Typography>
-          {!loading && videos.length > 0 && (
+          {!loading && loadedVideos.length > 0 && (
             <Box sx={{ mt: -1 }}>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                Showing {videos.length} video{videos.length !== 1 ? 's' : ''}
+                Showing {filteredVideos.length} of {allVideoIds.length} video{allVideoIds.length !== 1 ? 's' : ''}
               </Typography>
               <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-                <Chip 
-                  label={`From $${Math.min(...videos.map(v => v.price)).toFixed(2)}`}
-                  size="small"
-                  sx={{ 
-                    backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                    color: theme => theme.palette.text.primary,
-                    fontWeight: 'bold',
-                    border: theme => `1px solid ${theme.palette.divider}`
-                  }}
-                />
-                <Chip 
-                  label={`Up to $${Math.max(...videos.map(v => v.price)).toFixed(2)}`}
-                  size="small"
-                  sx={{ 
-                    backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                    color: theme => theme.palette.text.primary,
-                    fontWeight: 'bold',
-                    border: theme => `1px solid ${theme.palette.divider}`
-                  }}
-                />
-                <Chip 
-                  label={`Avg: $${(videos.reduce((sum, v) => sum + v.price, 0) / videos.length).toFixed(2)}`}
-                  size="small"
-                  sx={{ 
-                    backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                    color: theme => theme.palette.text.primary,
-                    fontWeight: 'bold',
-                    border: theme => `1px solid ${theme.palette.divider}`
-                  }}
-                />
+                {filteredVideos.length > 0 && (
+                  <>
+                    <Chip 
+                      label={`From $${Math.min(...filteredVideos.map(v => v.price)).toFixed(2)}`}
+                      size="small"
+                      sx={{ 
+                        backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                        color: theme => theme.palette.text.primary,
+                        fontWeight: 'bold',
+                        border: theme => `1px solid ${theme.palette.divider}`
+                      }}
+                    />
+                    <Chip 
+                      label={`Up to $${Math.max(...filteredVideos.map(v => v.price)).toFixed(2)}`}
+                      size="small"
+                      sx={{ 
+                        backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                        color: theme => theme.palette.text.primary,
+                        fontWeight: 'bold',
+                        border: theme => `1px solid ${theme.palette.divider}`
+                      }}
+                    />
+                    <Chip 
+                      label={`Avg: $${(filteredVideos.reduce((sum, v) => sum + v.price, 0) / filteredVideos.length).toFixed(2)}`}
+                      size="small"
+                      sx={{ 
+                        backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                        color: theme => theme.palette.text.primary,
+                        fontWeight: 'bold',
+                        border: theme => `1px solid ${theme.palette.divider}`
+                      }}
+                    />
+                  </>
+                )}
+                {isLoadingMore && (
+                  <Chip 
+                    label={`Loading ${loadedVideos.length} videos...`}
+                    size="small"
+                    sx={{ 
+                      backgroundColor: 'rgba(33, 150, 243, 0.1)',
+                      color: '#2196F3',
+                      fontWeight: 'bold',
+                      border: '1px solid rgba(33, 150, 243, 0.3)',
+                      animation: 'pulse 1.5s ease-in-out infinite'
+                    }}
+                  />
+                )}
               </Box>
             </Box>
           )}
@@ -448,11 +654,22 @@ const VideoList: FC = () => {
       )}
       
       <Box>
+        {/* Add CSS animation for pulse effect */}
+        <style>
+          {`
+            @keyframes pulse {
+              0% { opacity: 1; }
+              50% { opacity: 0.7; }
+              100% { opacity: 1; }
+            }
+          `}
+        </style>
+        
         {loading ? (
           <Grid container spacing={3}>
             {renderSkeletons()}
           </Grid>
-        ) : videos.length === 0 ? (
+        ) : filteredVideos.length === 0 && !isLoadingMore ? (
           <Grow in={true} timeout={1000}>
             <Paper sx={{ 
               p: 4, 
@@ -478,18 +695,52 @@ const VideoList: FC = () => {
           ) : (
             <>
               <Grid container spacing={3}>
-                {videos.map((video, index) => (
+                {/* Show loaded videos with smooth animation */}
+                {filteredVideos.map((video, index) => (
                   <Grow
                     key={video.$id}
                     in={true}
-                    timeout={300 + index * 50}
+                    timeout={200}
                   >
                     <Grid item xs={12} sm={6} md={4} lg={3}>
                       <VideoCard video={video} />
                     </Grid>
                   </Grow>
                 ))}
+                
+                {/* Show loading cards with progress indicators for remaining videos */}
+                {isLoadingMore && renderLoadingCards()}
               </Grid>
+              
+              {/* Load More button */}
+              {displayedCount < allVideoIds.length && !isLoadingMore && (
+                <Box sx={{ 
+                  display: 'flex', 
+                  justifyContent: 'center', 
+                  mt: 5,
+                  pt: 3,
+                  borderTop: '1px solid',
+                  borderColor: 'divider'
+                }}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    size="large"
+                    onClick={handleLoadMore}
+                    disabled={isLoadingMore}
+                    sx={{
+                      px: 4,
+                      py: 1.5,
+                      fontWeight: 700,
+                      borderRadius: 2,
+                      textTransform: 'none',
+                      fontSize: '1rem'
+                    }}
+                  >
+                    Load More Videos
+                  </Button>
+                </Box>
+              )}
             </>
           )}
       </Box>
